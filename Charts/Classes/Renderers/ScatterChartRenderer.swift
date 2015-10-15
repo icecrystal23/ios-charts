@@ -244,8 +244,23 @@ public class ScatterChartRenderer: LineScatterCandleRadarChartRenderer
                     let val = entries[j].value
                     
                     let text = formatter!.stringFromNumber(val)
+                    let attributes = [NSFontAttributeName: valueFont, NSForegroundColorAttributeName: valueTextColor]
+                    let textSize:CGSize = text!.sizeWithAttributes(attributes)
+                    let point: CGPoint = CGPoint(x: positions[j].x, y: positions[j].y - shapeSize*0.5 - lineHeight - 6)
                     
-                    ChartUtils.drawText(context: context, text: text!, point: CGPoint(x: positions[j].x, y: positions[j].y - shapeSize - lineHeight), align: .Center, attributes: [NSFontAttributeName: valueFont, NSForegroundColorAttributeName: valueTextColor])
+                    var rect:CGRect = CGRect(origin: point, size: textSize)
+                    rect.origin.x -= textSize.width / 2.0 + 8.0
+                    rect.origin.y -= 6.0
+                    rect.size.width += 16
+                    rect.size.height += 12
+                    let path = UIBezierPath(roundedRect: rect, cornerRadius: 5)
+                    CGContextSaveGState(context)
+                    CGContextSetFillColorWithColor(context, UIColor.init(white: 1.0, alpha: 0.83).CGColor)
+                    CGContextAddPath(context, path.CGPath)
+                    CGContextFillPath(context)
+                    CGContextRestoreGState(context)
+                    
+                    ChartUtils.drawText(context: context, text: text!, point: point, align: .Center, attributes: attributes)
                 }
             }
         }
