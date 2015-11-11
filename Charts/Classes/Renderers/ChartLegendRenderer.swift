@@ -107,7 +107,7 @@ public class ChartLegendRenderer: ChartRendererBase
         _legend.calculateDimensions(labelFont: _legend.font, viewPortHandler: viewPortHandler)
     }
     
-    public func renderLegend(context context: CGContext?)
+    public func renderLegend(context context: CGContext)
     {
         if (_legend === nil || !_legend.enabled)
         {
@@ -166,7 +166,7 @@ public class ChartLegendRenderer: ChartRendererBase
                     originPosX -= _legend.neededWidth
                 }
             }
-            else // if (legendPosition == .BelowChartCenter)
+            else // .BelowChartCenter || .AboveChartCenter
             {
                 originPosX = viewPortHandler.contentLeft + contentWidth / 2.0
             }
@@ -176,25 +176,30 @@ public class ChartLegendRenderer: ChartRendererBase
             var calculatedLabelBreakPoints = _legend.calculatedLabelBreakPoints
             
             var posX: CGFloat = originPosX
-            var posY: CGFloat = viewPortHandler.chartHeight - yoffset - _legend.neededHeight
+            var posY: CGFloat
+            
             if (legendPosition == .AboveChartLeft
                 || legendPosition == .AboveChartRight
                 || legendPosition == .AboveChartCenter)
             {
-                posY = 0;
+                posY = 0
+            }
+            else
+            {
+                posY = viewPortHandler.chartHeight - yoffset - _legend.neededHeight
             }
             
             var lineIndex: Int = 0
             
             for (var i = 0, count = labels.count; i < count; i++)
             {
-                if (calculatedLabelBreakPoints[i])
+                if (i < calculatedLabelBreakPoints.count && calculatedLabelBreakPoints[i])
                 {
                     posX = originPosX
                     posY += labelLineHeight
                 }
                 
-                if (posX == originPosX && legendPosition == .BelowChartCenter)
+                if (posX == originPosX && legendPosition == .BelowChartCenter && lineIndex < calculatedLineSizes.count)
                 {
                     posX += (direction == .RightToLeft ? calculatedLineSizes[lineIndex].width : -calculatedLineSizes[lineIndex].width) / 2.0
                     lineIndex++
@@ -210,7 +215,7 @@ public class ChartLegendRenderer: ChartRendererBase
                         posX -= formSize
                     }
                     
-                    drawForm(context, x: posX, y: posY + formYOffset, colorIndex: i, legend: _legend)
+                    drawForm(context: context, x: posX, y: posY + formYOffset, colorIndex: i, legend: _legend)
                     
                     if (direction == .LeftToRight)
                     {
@@ -230,7 +235,7 @@ public class ChartLegendRenderer: ChartRendererBase
                         posX -= calculatedLabelSizes[i].width
                     }
                     
-                    drawLabel(context, x: posX, y: posY, label: labels[i]!, font: labelFont, textColor: labelTextColor)
+                    drawLabel(context: context, x: posX, y: posY, label: labels[i]!, font: labelFont, textColor: labelTextColor)
                     
                     if (direction == .LeftToRight)
                     {
@@ -321,7 +326,7 @@ public class ChartLegendRenderer: ChartRendererBase
                         x -= formSize - stack
                     }
                     
-                    drawForm(context, x: x, y: posY + formYOffset, colorIndex: i, legend: _legend)
+                    drawForm(context: context, x: x, y: posY + formYOffset, colorIndex: i, legend: _legend)
                     
                     if (direction == .LeftToRight)
                     {
@@ -347,12 +352,12 @@ public class ChartLegendRenderer: ChartRendererBase
                     
                     if (!wasStacked)
                     {
-                        drawLabel(context, x: x, y: posY, label: labels[i]!, font: labelFont, textColor: labelTextColor)
+                        drawLabel(context: context, x: x, y: posY, label: labels[i]!, font: labelFont, textColor: labelTextColor)
                     }
                     else
                     {
                         posY += labelLineHeight
-                        drawLabel(context, x: x, y: posY, label: labels[i]!, font: labelFont, textColor: labelTextColor)
+                        drawLabel(context: context, x: x, y: posY, label: labels[i]!, font: labelFont, textColor: labelTextColor)
                     }
                     
                     // make a step down
@@ -373,7 +378,7 @@ public class ChartLegendRenderer: ChartRendererBase
     private var _formLineSegmentsBuffer = [CGPoint](count: 2, repeatedValue: CGPoint())
     
     /// Draws the Legend-form at the given position with the color at the given index.
-    internal func drawForm(context: CGContext?, x: CGFloat, y: CGFloat, colorIndex: Int, legend: ChartLegend)
+    internal func drawForm(context context: CGContext, x: CGFloat, y: CGFloat, colorIndex: Int, legend: ChartLegend)
     {
         let formColor = legend.colors[colorIndex]
         
@@ -414,7 +419,7 @@ public class ChartLegendRenderer: ChartRendererBase
     }
 
     /// Draws the provided label at the given position.
-    internal func drawLabel(context: CGContext?, x: CGFloat, y: CGFloat, label: String, font: UIFont, textColor: UIColor)
+    internal func drawLabel(context context: CGContext, x: CGFloat, y: CGFloat, label: String, font: UIFont, textColor: UIColor)
     {
         ChartUtils.drawText(context: context, text: label, point: CGPoint(x: x, y: y), align: .Left, attributes: [NSFontAttributeName: font, NSForegroundColorAttributeName: textColor])
     }

@@ -125,6 +125,11 @@ public class ChartData: NSObject
             return
         }
         
+        if self is ScatterChartData
+        { // In scatter chart it makes sense to have more than one y-value value for an x-index
+            return
+        }
+        
         for (var i = 0; i < dataSets.count; i++)
         {
             if (dataSets[i].yVals.count > _xVals.count)
@@ -277,6 +282,12 @@ public class ChartData: NSObject
             return 0
         }
         return _dataSets.count
+    }
+    
+    /// - returns: the average value across all entries in this Data object (all entries from the DataSets this data object holds)
+    public var average: Double
+    {
+        return yValueSum / Double(yValCount)
     }
     
     /// - returns: the smallest y-value the data object contains.
@@ -759,6 +770,7 @@ public class ChartData: NSObject
         return -1
     }
     
+    /// - returns: the first DataSet from the datasets-array that has it's dependency on the left axis. Returns null if no DataSet with left dependency could be found.
     public func getFirstLeft() -> ChartDataSet?
     {
         for dataSet in _dataSets
@@ -772,6 +784,7 @@ public class ChartData: NSObject
         return nil
     }
     
+    /// - returns: the first DataSet from the datasets-array that has it's dependency on the right axis. Returns null if no DataSet with right dependency could be found.
     public func getFirstRight() -> ChartDataSet?
     {
         for dataSet in _dataSets
@@ -865,6 +878,7 @@ public class ChartData: NSObject
     }
     
     /// Enables / disables highlighting values for all DataSets this data object contains.
+    /// If set to true, this means that values can be highlighted programmatically or by touch gesture.
     public var highlightEnabled: Bool
     {
         get

@@ -16,7 +16,7 @@ import CoreGraphics
 import UIKit
 
 /// Base-class of LineChart, BarChart, ScatterChart and CandleStickChart.
-public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
+public class BarLineChartViewBase: ChartViewBase, BarLineScatterCandleBubbleChartDataProvider, UIGestureRecognizerDelegate
 {
     /// the maximum number of entried to which values will be drawn
     internal var _maxVisibleValueCount = 100
@@ -139,7 +139,8 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
             return
         }
         
-        let context = UIGraphicsGetCurrentContext()
+        let optionalContext = UIGraphicsGetCurrentContext()
+        guard let context = optionalContext else { return }
         
         calcModulus()
         
@@ -224,7 +225,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         // if highlighting is enabled
         if (valuesToHighlight())
         {
-            renderer?.drawHighlighted(context: context, indices: _indicesToHightlight)
+            renderer?.drawHighlighted(context: context, indices: _indicesToHighlight)
         }
 
         // Removes clipping rectangle
@@ -414,14 +415,22 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
                     || _legend.position == .BelowChartRight
                     || _legend.position == .BelowChartCenter)
                 {
-                    let yOffset = _legend.textHeightMax; // It's possible that we do not need this offset anymore as it is available through the extraOffsets
+                    // It's possible that we do not need this offset anymore as it
+                    //   is available through the extraOffsets, but changing it can mean
+                    //   changing default visibility for existing apps.
+                    let yOffset = _legend.textHeightMax
+                    
                     offsetBottom += min(_legend.neededHeight + yOffset, _viewPortHandler.chartHeight * _legend.maxSizePercent)
                 }
                 else if (_legend.position == .AboveChartLeft
                     || _legend.position == .AboveChartRight
                     || _legend.position == .AboveChartCenter)
                 {
-                    let yOffset = _legend.textHeightMax; // It's possible that we do not need this offset anymore as it is available through the extraOffsets
+                    // It's possible that we do not need this offset anymore as it
+                    //   is available through the extraOffsets, but changing it can mean
+                    //   changing default visibility for existing apps.
+                    let yOffset = _legend.textHeightMax
+                    
                     offsetTop += min(_legend.neededHeight + yOffset, _viewPortHandler.chartHeight * _legend.maxSizePercent)
                 }
             }
@@ -439,7 +448,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
 
             if (xAxis.isEnabled && xAxis.isDrawLabelsEnabled)
             {
-                let xlabelheight = xAxis.labelHeight * 2.0
+                let xlabelheight = xAxis.labelRotatedHeight + xAxis.yOffset
                 
                 // offsets for x-labels
                 if (xAxis.labelPosition == .Bottom)
@@ -484,7 +493,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         
         if (!_xAxis.isAxisModulusCustom)
         {
-            _xAxis.axisLabelModulus = Int(ceil((CGFloat(_data.xValCount) * _xAxis.labelWidth) / (_viewPortHandler.contentWidth * _viewPortHandler.touchMatrix.a)))
+            _xAxis.axisLabelModulus = Int(ceil((CGFloat(_data.xValCount) * _xAxis.labelRotatedWidth) / (_viewPortHandler.contentWidth * _viewPortHandler.touchMatrix.a)))
         }
         
         if (_xAxis.axisLabelModulus < 1)
@@ -493,32 +502,60 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         }
     }
     
-    public override func getMarkerPosition(entry entry: ChartDataEntry, highlight: ChartHighlight) -> CGPoint
+    public override func getMarkerPosition(entry e: ChartDataEntry, highlight: ChartHighlight) -> CGPoint
     {
         let dataSetIndex = highlight.dataSetIndex
-        var xPos = CGFloat(entry.xIndex)
-        var yPos = entry.value
+        var xPos = CGFloat(e.xIndex)
+        var yPos = CGFloat(e.value)
         
         if (self.isKindOfClass(BarChartView))
         {
             let bd = _data as! BarChartData
             let space = bd.groupSpace
+            let setCount = _data.dataSetCount
+            let i = e.xIndex
             
-            let x = CGFloat(entry.xIndex * (_data.dataSetCount - 1) + dataSetIndex) + space * CGFloat(entry.xIndex) + space / 2.0
-            
-            xPos += x
-            
-            if let barEntry = entry as? BarChartDataEntry
+            if self is HorizontalBarChartView
             {
-                if barEntry.values != nil && highlight.range !== nil
+                // calculate the x-position, depending on datasetcount
+                let y = CGFloat(i + i * (setCount - 1) + dataSetIndex) + space * CGFloat(i) + space / 2.0
+                
+                yPos = y
+                
+                if let entry = e as? BarChartDataEntry
                 {
-                    yPos = highlight.range!.to
-        }
+                    if entry.values != nil && highlight.range !== nil
+                    {
+                        xPos = CGFloat(highlight.range!.to)
+                    }
+                    else
+                    {
+                        xPos = CGFloat(e.value)
+                    }
+                }
+            }
+            else
+            {
+                let x = CGFloat(i + i * (setCount - 1) + dataSetIndex) + space * CGFloat(i) + space / 2.0
+                
+                xPos = x
+                
+                if let entry = e as? BarChartDataEntry
+                {
+                    if entry.values != nil && highlight.range !== nil
+                    {
+                        yPos = CGFloat(highlight.range!.to)
+                    }
+                    else
+                    {
+                        yPos = CGFloat(e.value)
+                    }
+                }
             }
         }
         
         // position of the marker depends on selected value index and value
-        var pt = CGPoint(x: xPos, y: CGFloat(yPos) * _animator.phaseY)
+        var pt = CGPoint(x: xPos, y: yPos * _animator.phaseY)
         
         getTransformer(_data.getDataSetByIndex(dataSetIndex)!.axisDependency).pointValueToPixel(&pt)
         
@@ -526,7 +563,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
     }
     
     /// draws the grid background
-    internal func drawGridBackground(context context: CGContext?)
+    internal func drawGridBackground(context context: CGContext)
     {
         if (drawGridBackgroundEnabled || drawBordersEnabled)
         {
@@ -550,21 +587,6 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         if (drawGridBackgroundEnabled || drawBordersEnabled)
         {
             CGContextRestoreGState(context)
-        }
-    }
-    
-    /// - returns: the Transformer class that contains all matrices and is
-    /// responsible for transforming values into pixels on the screen and
-    /// backwards.
-    public func getTransformer(which: ChartYAxis.AxisDependency) -> ChartTransformer
-    {
-        if (which == .Left)
-        {
-            return _leftAxisTransformer
-        }
-        else
-        {
-            return _rightAxisTransformer
         }
     }
     
@@ -599,6 +621,8 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         
         if (recognizer.state == UIGestureRecognizerState.Ended)
         {
+            if !self.isHighLightPerTapEnabled { return }
+            
             let h = getHighlightByTouchPoint(recognizer.locationInView(self))
             
             if (h === nil || h!.isEqual(self.lastHighlighted))
@@ -688,11 +712,14 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         else if (recognizer.state == UIGestureRecognizerState.Changed)
         {
             let isZoomingOut = (recognizer.scale < 1)
-            let canZoomMoreX = isZoomingOut ? _viewPortHandler.canZoomOutMoreX : _viewPortHandler.canZoomInMoreX
+            var canZoomMoreX = isZoomingOut ? _viewPortHandler.canZoomOutMoreX : _viewPortHandler.canZoomInMoreX
+            var canZoomMoreY = isZoomingOut ? _viewPortHandler.canZoomOutMoreY : _viewPortHandler.canZoomInMoreY
             
             if (_isScaling)
             {
-                if (canZoomMoreX || (_gestureScaleAxis == .Both || _gestureScaleAxis == .Y && _scaleYEnabled))
+                canZoomMoreX = canZoomMoreX && _scaleXEnabled && (_gestureScaleAxis == .Both || _gestureScaleAxis == .X);
+                canZoomMoreY = canZoomMoreY && _scaleYEnabled && (_gestureScaleAxis == .Both || _gestureScaleAxis == .Y);
+                if canZoomMoreX || canZoomMoreY
                 {
                     var location = recognizer.locationInView(self)
                     location.x = location.x - _viewPortHandler.offsetLeft
@@ -706,8 +733,8 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
                         location.y = -(_viewPortHandler.chartHeight - location.y - _viewPortHandler.offsetBottom)
                     }
                     
-                    let scaleX = (_gestureScaleAxis == .Both || _gestureScaleAxis == .X) && _scaleXEnabled ? recognizer.scale : 1.0
-                    let scaleY = (_gestureScaleAxis == .Both || _gestureScaleAxis == .Y) && _scaleYEnabled ? recognizer.scale : 1.0
+                    let scaleX = canZoomMoreX ? recognizer.scale : 1.0
+                    let scaleY = canZoomMoreY ? recognizer.scale : 1.0
                     
                     var matrix = CGAffineTransformMakeTranslation(location.x, location.y)
                     matrix = CGAffineTransformScale(matrix, scaleX, scaleY)
@@ -736,15 +763,26 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         {
             stopDeceleration()
             
-            if ((!_dataNotSet && _dragEnabled && !self.hasNoDragOffset) || !self.isFullyZoomedOut)
+            if _dataNotSet
+            { // If we have no data, we have nothing to pan and no data to highlight
+                return;
+            }
+            
+            // If drag is enabled and we are in a position where there's something to drag:
+            //  * If we're zoomed in, then obviously we have something to drag.
+            //  * If we have a drag offset - we always have something to drag
+            if self.isDragEnabled &&
+                (!self.hasNoDragOffset || !self.isFullyZoomedOut)
             {
                 _isDragging = true
                 
                 _closestDataSetToTouch = getDataSetByTouchPoint(recognizer.locationOfTouch(0, inView: self))
                 
                 let translation = recognizer.translationInView(self)
+                let didUserDrag = (self is HorizontalBarChartView) ? translation.y != 0.0 : translation.x != 0.0
                 
-                if (!performPanChange(translation: translation))
+                // Check to see if user dragged at all and if so, can the chart be dragged by the given amount
+                if (didUserDrag && !performPanChange(translation: translation))
                 {
                     if (_outerScrollView !== nil)
                     {
@@ -763,6 +801,12 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
                 }
                 
                 _lastPanPoint = recognizer.translationInView(self)
+            }
+            else if self.isHighlightPerDragEnabled
+            {
+                // We will only handle highlights on UIGestureRecognizerState.Changed
+                
+                _isDragging = false
             }
         }
         else if (recognizer.state == UIGestureRecognizerState.Changed)
@@ -899,8 +943,8 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         
         if (gestureRecognizer == _panGestureRecognizer)
         {
-            if (_dataNotSet || !_dragEnabled || !self.hasNoDragOffset ||
-                (self.isFullyZoomedOut && !self.isHighlightPerDragEnabled))
+            if _dataNotSet || !_dragEnabled ||
+                (self.hasNoDragOffset && self.isFullyZoomedOut && !self.isHighlightPerDragEnabled)
             {
                 return false
             }
@@ -943,6 +987,14 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
             {
                 scrollView = scrollView?.superview
             }
+            
+            // If there is two scrollview together, we pick the superview of the inner scrollview.
+            // In the case of UITableViewWrepperView, the superview will be UITableView
+            if let superViewOfScrollView = scrollView?.superview where superViewOfScrollView.isKindOfClass(UIScrollView)
+            {
+                scrollView = superViewOfScrollView
+            }
+
             var foundScrollView = scrollView as? UIScrollView
             
             if (foundScrollView !== nil && !foundScrollView!.scrollEnabled)
@@ -1071,6 +1123,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
     }
 
     /// Moves the left side of the current viewport to the specified x-index.
+    /// This also refreshes the chart by calling setNeedsDisplay().
     public func moveViewToX(xIndex: Int)
     {
         if (_viewPortHandler.hasChartDimens)
@@ -1087,6 +1140,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
     }
 
     /// Centers the viewport to the specified y-value on the y-axis.
+    /// This also refreshes the chart by calling setNeedsDisplay().
     /// 
     /// - parameter yValue:
     /// - parameter axis: - which axis should be used as a reference for the y-axis
@@ -1108,6 +1162,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
     }
 
     /// This will move the left side of the current viewport to the specified x-index on the x-axis, and center the viewport to the specified y-value on the y-axis.
+    /// This also refreshes the chart by calling setNeedsDisplay().
     /// 
     /// - parameter xIndex:
     /// - parameter yValue:
@@ -1130,6 +1185,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
     }
     
     /// This will move the center of the current viewport to the specified x-index and y-value.
+    /// This also refreshes the chart by calling setNeedsDisplay().
     ///
     /// - parameter xIndex:
     /// - parameter yValue:
@@ -1180,7 +1236,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
     }
 
     // MARK: - Accessors
-
+    
     /// - returns: the delta-y value (y-value range) of the specified axis.
     public func getDeltaY(axis: ChartYAxis.AxisDependency) -> CGFloat
     {
@@ -1202,20 +1258,6 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         getTransformer(axis).pointValueToPixel(&vals)
 
         return vals
-    }
-
-    /// the number of maximum visible drawn values on the chart
-    /// only active when `setDrawValues()` is enabled
-    public var maxVisibleValueCount: Int
-    {
-        get
-        {
-            return _maxVisibleValueCount
-        }
-        set
-        {
-            _maxVisibleValueCount = newValue
-        }
     }
 
     /// is dragging enabled? (moving the chart with the finger) for the chart (this does not affect scaling).
@@ -1395,30 +1437,14 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
     }
     
     /// - returns: the DataSet object displayed at the touched position of the chart
-    public func getDataSetByTouchPoint(pt: CGPoint) -> BarLineScatterCandleChartDataSet!
+    public func getDataSetByTouchPoint(pt: CGPoint) -> BarLineScatterCandleBubbleChartDataSet!
     {
         let h = getHighlightByTouchPoint(pt)
         if (h !== nil)
         {
-            return _data.getDataSetByIndex(h!.dataSetIndex) as! BarLineScatterCandleChartDataSet!
+            return _data.getDataSetByIndex(h!.dataSetIndex) as! BarLineScatterCandleBubbleChartDataSet!
         }
         return nil
-    }
-    
-    /// - returns: the lowest x-index (value on the x-axis) that is still visible on he chart.
-    public var lowestVisibleXIndex: Int
-    {
-        var pt = CGPoint(x: viewPortHandler.contentLeft, y: viewPortHandler.contentBottom)
-        getTransformer(.Left).pixelToValue(&pt)
-        return (pt.x <= 0.0) ? 0 : Int(pt.x + 1.0)
-    }
-
-    /// - returns: the highest x-index (value on the x-axis) that is still visible on the chart.
-    public var highestVisibleXIndex: Int
-    {
-        var pt = CGPoint(x: viewPortHandler.contentRight, y: viewPortHandler.contentBottom)
-        getTransformer(.Left).pixelToValue(&pt)
-        return (_data != nil && Int(pt.x) >= _data.xValCount) ? _data.xValCount - 1 : Int(pt.x)
     }
 
     /// - returns: the current x-scale factor
@@ -1477,7 +1503,7 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
         return _xAxis
     }
     
-    /// flag that indicates if pinch-zoom is enabled. if true, both x and y axis can be scaled with 2 fingers, if false, x and y axis can be scaled separately
+    /// flag that indicates if pinch-zoom is enabled. if true, both x and y axis can be scaled simultaneously with 2 fingers, if false, x and y axis can be scaled separately
     public var pinchZoomEnabled: Bool
     {
         get
@@ -1640,19 +1666,68 @@ public class BarLineChartViewBase: ChartViewBase, UIGestureRecognizerDelegate
             return _rightAxis.requiredSize().width
         }
     }
+    
+    // MARK: - BarLineScatterCandleBubbleChartDataProvider
+    
+    /// - returns: the Transformer class that contains all matrices and is
+    /// responsible for transforming values into pixels on the screen and
+    /// backwards.
+    public func getTransformer(which: ChartYAxis.AxisDependency) -> ChartTransformer
+    {
+        if (which == .Left)
+        {
+            return _leftAxisTransformer
+        }
+        else
+        {
+            return _rightAxisTransformer
+        }
+    }
+    
+    /// the number of maximum visible drawn values on the chart
+    /// only active when `setDrawValues()` is enabled
+    public var maxVisibleValueCount: Int
+    {
+        get
+        {
+            return _maxVisibleValueCount
+        }
+        set
+        {
+            _maxVisibleValueCount = newValue
+        }
+    }
+    
+    public func isInverted(axis: ChartYAxis.AxisDependency) -> Bool
+    {
+        return getAxis(axis).isInverted
+    }
+    
+    /// - returns: the lowest x-index (value on the x-axis) that is still visible on he chart.
+    public var lowestVisibleXIndex: Int
+    {
+        var pt = CGPoint(x: viewPortHandler.contentLeft, y: viewPortHandler.contentBottom)
+        getTransformer(.Left).pixelToValue(&pt)
+        return (pt.x <= 0.0) ? 0 : Int(pt.x + 1.0)
+    }
+    
+    /// - returns: the highest x-index (value on the x-axis) that is still visible on the chart.
+    public var highestVisibleXIndex: Int
+    {
+        var pt = CGPoint(x: viewPortHandler.contentRight, y: viewPortHandler.contentBottom)
+        getTransformer(.Left).pixelToValue(&pt)
+        return (_data != nil && Int(pt.x) >= _data.xValCount) ? _data.xValCount - 1 : Int(pt.x)
+    }
 }
 
 /// Default formatter that calculates the position of the filled line.
 internal class BarLineChartFillFormatter: NSObject, ChartFillFormatter
 {
-    private weak var _chart: BarLineChartViewBase!
-    
-    internal init(chart: BarLineChartViewBase)
+    internal override init()
     {
-        _chart = chart
     }
     
-    internal func getFillLinePosition(dataSet dataSet: LineChartDataSet, data: LineChartData, chartMaxY: Double, chartMinY: Double) -> CGFloat
+    internal func getFillLinePosition(dataSet dataSet: LineChartDataSet, dataProvider: LineChartDataProvider) -> CGFloat
     {
         var fillMin = CGFloat(0.0)
         
@@ -1662,33 +1737,36 @@ internal class BarLineChartFillFormatter: NSObject, ChartFillFormatter
         }
         else
         {
-            if (!_chart.getAxis(dataSet.axisDependency).isStartAtZeroEnabled)
+            if let data = dataProvider.data
             {
-                var max: Double, min: Double
-                
-                if (data.yMax > 0.0)
+                if !dataProvider.getAxis(dataSet.axisDependency).isStartAtZeroEnabled
                 {
-                    max = 0.0
+                    var max: Double, min: Double
+                    
+                    if (data.yMax > 0.0)
+                    {
+                        max = 0.0
+                    }
+                    else
+                    {
+                        max = dataProvider.chartYMax
+                    }
+                    
+                    if (data.yMin < 0.0)
+                    {
+                        min = 0.0
+                    }
+                    else
+                    {
+                        min = dataProvider.chartYMin
+                    }
+                    
+                    fillMin = CGFloat(dataSet.yMin >= 0.0 ? min : max)
                 }
                 else
                 {
-                    max = chartMaxY
+                    fillMin = 0.0
                 }
-                
-                if (data.yMin < 0.0)
-                {
-                    min = 0.0
-                }
-                else
-                {
-                    min = chartMinY
-                }
-                
-                fillMin = CGFloat(dataSet.yMin >= 0.0 ? min : max)
-            }
-            else
-            {
-                fillMin = 0.0
             }
         }
         
