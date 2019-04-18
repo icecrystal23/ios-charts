@@ -179,15 +179,23 @@ open class ScatterChartRenderer: LineScatterCandleRadarRenderer
                     
                     if dataSet.isDrawValuesEnabled
                     {
-                        ChartUtils.drawText(
-                            context: context,
-                            text: text,
-                            point: CGPoint(
-                                x: pt.x,
-                                y: pt.y - shapeSize - lineHeight),
-                            align: .center,
-                            attributes: [NSAttributedString.Key.font: valueFont, NSAttributedString.Key.foregroundColor: dataSet.valueTextColorAt(j)]
-                        )
+                        let attributes = [NSAttributedString.Key.font: valueFont, NSAttributedString.Key.foregroundColor: dataSet.valueTextColorAt(j)]
+                        let textSize:CGSize = text.size(withAttributes: attributes)
+                        let point: CGPoint = CGPoint(x: pt.x, y: pt.y - shapeSize*0.5 - lineHeight - 6)
+
+                        var rect:CGRect = CGRect(origin: point, size: textSize)
+                        rect.origin.x -= textSize.width / 2.0 + 8.0
+                        rect.origin.y -= 6.0
+                        rect.size.width += 16
+                        rect.size.height += 12
+                        let path = UIBezierPath(roundedRect: rect, cornerRadius: 5)
+                        context.saveGState()
+                        context.setFillColor(UIColor.init(white: 1.0, alpha: 0.83).cgColor)
+                        context.addPath(path.cgPath)
+                        context.fillPath()
+                        context.restoreGState()
+                        
+                        ChartUtils.drawText(context: context, text: text, point: point, align: .center, attributes: attributes)
                     }
                     
                     if let icon = e.icon, dataSet.isDrawIconsEnabled
